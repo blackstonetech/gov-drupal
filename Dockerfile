@@ -7,6 +7,25 @@ Run yum -y update && \
     yum -y install \
     epel-release
 
+
+# Pull base image.
+FROM dockerfile/ubuntu
+
+# Install Java.
+RUN \
+  apt-get update && \
+  apt-get install -y openjdk-7-jre && \
+  rm -rf /var/lib/apt/lists/*
+
+# Define working directory.
+WORKDIR /data
+
+# Define commonly used JAVA_HOME variable
+ENV JAVA_HOME /usr/lib/jvm/java-7-openjdk-amd64
+
+# Define default command.
+CMD ["bash"]
+
 # Install base
 RUN yum -y update && \
     yum -y groupinstall "Development Tools" && \
@@ -22,20 +41,6 @@ RUN yum -y update && \
     vim \
     wget
 
-# Install PHP and PHP modules
-RUN yum -y update && \
-    yum -y install \
-    php \
-    php-curl \
-    php-gd \
-    php-imap \
-    php-mbstring \
-    php-mcrypt \
-    php-mysql \
-    php-odbc \
-    php-pear \
-    php-pecl-imagick \
-    php-pecl-zendopcache
 
 # Install misc tools
 RUN yum -y update && yum -y install \
@@ -46,17 +51,6 @@ RUN yum -y update && yum -y install \
 RUN easy_install \
     supervisor
 
-# Install Composer and Drush
-RUN curl -sS https://getcomposer.org/installer | php -- \
-    --install-dir=/usr/local/bin \
-    --filename=composer \
-    --version=1.0.0-alpha10 && \
-    composer \
-    --working-dir=/usr/local/src/ \
-    global \
-    require \
-    drush/drush:7.* && \
-    ln -s /usr/local/src/vendor/bin/drush /usr/bin/drush
 
 # Disable services management by systemd.
 RUN systemctl disable httpd.service && \

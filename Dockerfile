@@ -1,73 +1,49 @@
-FROM centos:7
-MAINTAINER Ron Williams <hello@ronwilliams.io>
-ENV PATH /usr/local/src/vendor/bin/:/usr/local/rvm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+FROM java:8
 
-# Install and enable repositories
-Run yum -y update && \
-    yum -y install \
-    epel-release
+# Configuration variables.
+ENV JIRA_HOME     /var/atlassian/jira
+ENV JIRA_INSTALL  /opt/atlassian/jira
+ENV JIRA_VERSION  7.0.0
 
+# Install Atlassian JIRA and helper tools and setup initial home
+# directory structure.
+RUN set -x \
+    && apt-get update --quiet \
+    && apt-get install --quiet --yes --no-install-recommends libtcnative-1 xmlstarlet \
+    && apt-get clean \
+    && mkdir -p                "${JIRA_HOME}" \
+    && mkdir -p                "${JIRA_HOME}/caches/indexes" \
+    && chmod -R 700            "${JIRA_HOME}" \
+    && chown -R daemon:daemon  "${JIRA_HOME}" \
+    && mkdir -p                "${JIRA_INSTALL}/conf/Catalina" \
+    && curl -Ls                "https://www.atlassian.com/software/jira/downloads/binary/atlassian-jira-core-${JIRA_VERSION}.tar.gz" | tar -xz --directory "${JIRA_INSTALL}" --strip-components=1 --no-same-owner \
+    && curl -Ls                "https://dev.mysql.com/get/Downloads/Connector-J/mysql-connector-java-5.1.36.tar.gz" | tar -xz --directory "${JIRA_INSTALL}/lib" --strip-components=1 --no-same-owner "mysql-connector-java-5.1.36/mysql-connector-java-5.1.36-bin.jar" \
+    && chmod -R 700            "${JIRA_INSTALL}/conf" \
+    && chmod -R 700            "${JIRA_INSTALL}/logs" \
+    && chmod -R 700            "${JIRA_INSTALL}/temp" \
+    && chmod -R 700            "${JIRA_INSTALL}/work" \
+    && chown -R daemon:daemon  "${JIRA_INSTALL}/conf" \
+    && chown -R daemon:daemon  "${JIRA_INSTALL}/logs" \
+    && chown -R daemon:daemon  "${JIRA_INSTALL}/temp" \
+    && chown -R daemon:daemon  "${JIRA_INSTALL}/work" \
+    && sed --in-place          "s/java version/openjdk version/g" "${JIRA_INSTALL}/bin/check-java.sh" \
+    && echo -e                 "\njira.home=$JIRA_HOME" >> "${JIRA_INSTALL}/atlassian-jira/WEB-INF/classes/jira-application.properties"
 
-# Pull base image.
-FROM dockerfile/ubuntu
+# Use the default unprivileged account. This could be considered bad practice
+# on systems where multiple processes end up being executed by 'daemon' but
+# here we only ever run one process anyway.
+USER daemon:daemon
 
-# Install Java.
-RUN \
-  apt-get update && \
-  apt-get install -y openjdk-7-jre && \
-  rm -rf /var/lib/apt/lists/*
+# Expose default HTTP connector port.
+EXPOSE 8080
 
-# Define working directory.
-WORKDIR /data
+# Set volume mount points for installation and home directory. Changes to the
+# home directory needs to be persisted as well as parts of the installation
+# directory due to eg. logs.
+VOLUME ["/var/atlassian/jira"]
 
-# Define commonly used JAVA_HOME variable
-ENV JAVA_HOME /usr/lib/jvm/java-7-openjdk-amd64
+# Set the default working directory as the installation directory.
+WORKDIR ${JIRA_HOME}
 
-# Define default command.
-CMD ["bash"]
-
-# Install base
-RUN yum -y update && \
-    yum -y groupinstall "Development Tools" && \
-    yum -y install \
-    curl \
-    git \
-    httpd \
-    mariadb \
-    msmtp \
-    net-tools \
-    rsync \
-    tmux \
-    vim \
-    wget
-
-
-# Install misc tools
-RUN yum -y update && yum -y install \
-    python-setuptools \
-    rsyslog
-
-# Install supervisor. Requires python-setuptools.
-RUN easy_install \
-    supervisor
-
-
-# Disable services management by systemd.
-RUN systemctl disable httpd.service && \
-    systemctl disable rsyslog.service
-
-# Apache config, and PHP config, test apache config
-# See https://github.com/docker/docker/issues/7511 /tmp usage
-COPY public/index.php /var/www/public/index.php
-COPY centos-7 /tmp/centos-7/
-RUN rsync -a /tmp/centos-7/etc/httpd /etc/ && \
-    apachectl configtest
-RUN rsync -a /tmp/centos-7/etc/php* /etc/
-
-COPY conf/supervisord.conf /etc/supervisord.conf
-COPY conf/lamp.sh /etc/lamp.sh
-
-EXPOSE 80 443
-
-RUN chmod +x /etc/lamp.sh
-CMD ["/etc/lamp.sh"]
+# Run Atlassian JIRA as a foreground process by default.
+CMD ["/opt/atlassian/jira/bin/start-jira.sh", "-fg"]
